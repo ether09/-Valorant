@@ -12,7 +12,7 @@ const supabase = createClient(
 const MAPS = ["어비스", "로터스", "선셋", "헤이븐", "아이스박스", "바인드", "어센트"];
 
 export default function Home() {
-  const [players, setPlayers] = useState<any[]>([]);
+  const [players, setPlayers] = useState<any>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [result, setResult] = useState<{ teamA: any[], teamB: any[], map: string } | null>(null);
   const [loading, setLoading] = useState(true);
