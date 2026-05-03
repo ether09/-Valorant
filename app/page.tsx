@@ -17,17 +17,17 @@ export default function Home() {
   const [result, setResult] = useState<{ teamA: any[], teamB: any[], map: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 닉네임 입력을 위한 상태
   const [inputName, setInputName] = useState("");
   const [inputTag, setInputTag] = useState("KR1");
 
-  // 1. DB에서 데이터 로드
+  // 1. 데이터 로드 (Supabase -> Valorant API)
   const loadAllData = async () => {
     setLoading(true);
     try {
       const { data: dbFriends, error: dbError } = await supabase
         .from('friends')
-        .select('*');
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (dbError) throw dbError;
 
@@ -38,11 +38,13 @@ export default function Home() {
               headers: { "Authorization": process.env.NEXT_PUBLIC_VALORANT_API_KEY || "" }
             });
             const json = await res.json();
+            const uniqueId = `${f.name}#${f.tag}`;
+            
             return json.status === 200 
-              ? { ...json.data, id: `${f.name}#${f.tag}`, elo: json.data.elo || 0, error: false, name: f.name, tag: f.tag } 
-              : { name: f.name, tag: f.tag, error: true, id: `${f.name}#${f.tag}`, elo: 0 };
+              ? { ...json.data, id: uniqueId, db_id: f.id, elo: json.data.elo || 0, error: false, name: f.name, tag: f.tag } 
+              : { name: f.name, tag: f.tag, db_id: f.id, error: true, id: uniqueId, elo: 0 };
           } catch (e) {
-            return { name: f.name, tag: f.tag, error: true, id: `${f.name}#${f.tag}`, elo: 0 };
+            return { name: f.name, tag: f.tag, db_id: f.id, error: true, id: `${f.name}#${f.tag}`, elo: 0 };
           }
         })
       );
@@ -58,7 +60,7 @@ export default function Home() {
     loadAllData();
   }, []);
 
-  // 2. 친구 추가
+  // 2. 친구 추가 기능
   const handleAddFriend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputName || !inputTag) return alert("이름과 태그를 입력하세요!");
@@ -72,6 +74,23 @@ export default function Home() {
     } else {
       setInputName("");
       loadAllData();
+    }
+  };
+
+  // 3. 친구 삭제 기능
+  const handleDeleteFriend = async (e: React.MouseEvent, dbId: any) => {
+    e.stopPropagation(); // 카드 클릭(선택) 이벤트 방지
+    if (!confirm("정말 삭제하시겠습니까?")) return;
+
+    const { error } = await supabase
+      .from('friends')
+      .delete()
+      .eq('id', dbId);
+
+    if (error) {
+      alert("삭제 실패: " + error.message);
+    } else {
+      loadAllData(); // 목록 새로고침
     }
   };
 
@@ -102,7 +121,6 @@ export default function Home() {
   return (
     <main className="min-h-screen p-6 md:p-12 bg-[#0f1923] text-white">
       <div className="max-w-6xl mx-auto">
-        {/* 상단 헤더 및 입력창 섹션 */}
         <header className="mb-12 flex flex-col gap-8 border-b border-gray-800 pb-10">
           <div>
             <h1 className="text-7xl font-black text-[#ff4655] italic uppercase tracking-tighter leading-none">SCRIM</h1>
@@ -110,7 +128,6 @@ export default function Home() {
           </div>
           
           <div className="flex flex-col gap-4 w-full">
-            {/* 닉네임 입력창: flex-1과 py-4로 크기를 키웠습니다 */}
             <form onSubmit={handleAddFriend} className="flex gap-2 w-full max-w-3xl">
               <input 
                 type="text" 
@@ -138,10 +155,9 @@ export default function Home() {
           </div>
         </header>
 
-        {/* 매치 생성 결과창 */}
         {result && (
           <div className="mb-12 grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="bg-[#1f2933] border-l-4 border-[#ff4655] p-6 shadow-xl">
+            <div className="bg-[#1f2933] border-l-4 border-[#ff4655] p-6 shadow-xl text-left">
               <h3 className="text-[#ff4655] font-black italic uppercase tracking-tighter">Team A</h3>
               <div className="mt-4 space-y-2">
                 {result.teamA.map(p => (
@@ -150,7 +166,7 @@ export default function Home() {
                     <span className="text-gray-500 text-xs">{p.currenttierpatched}</span>
                   </div>
                 ))}
-                <p className="mt-4 text-[10px] text-gray-500 uppercase font-bold">Avg: {getAvgElo(result.teamA)} PTS</p>
+                <p className="mt-4 text-[10px] text-gray-500 uppercase font-bold text-left">Avg: {getAvgElo(result.teamA)} PTS</p>
               </div>
             </div>
 
@@ -168,13 +184,12 @@ export default function Home() {
                     <span className="text-gray-500 text-xs">{p.currenttierpatched}</span>
                   </div>
                 ))}
-                <p className="mt-4 text-[10px] text-gray-500 uppercase font-bold">Avg: {getAvgElo(result.teamB)} PTS</p>
+                <p className="mt-4 text-[10px] text-gray-500 uppercase font-bold text-right">Avg: {getAvgElo(result.teamB)} PTS</p>
               </div>
             </div>
           </div>
         )}
         
-        {/* 유저 리스트: 티어 구역을 작고 깔끔하게 슬림화 */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {players.map((player: any) => (
             <div 
@@ -187,9 +202,14 @@ export default function Home() {
               <div className="relative z-10">
                 <div className="flex justify-between items-start">
                   <p className="text-[9px] text-gray-600 font-mono italic">#{player.tag}</p>
-                  {selectedIds.includes(player.id) && (
-                    <span className="text-[8px] font-black bg-[#ff4655] px-1 italic">SELECTED</span>
-                  )}
+                  
+                  {/* 삭제 버튼 추가 */}
+                  <button 
+                    onClick={(e) => handleDeleteFriend(e, player.db_id)}
+                    className="text-gray-600 hover:text-[#ff4655] text-xs font-bold transition-colors px-1"
+                  >
+                    ✕
+                  </button>
                 </div>
                 
                 <h2 className="text-lg font-black truncate mt-1 uppercase">{player.name}</h2>
@@ -205,7 +225,10 @@ export default function Home() {
                       style={{ width: `${player.error ? 0 : (player.ranking_in_tier || 0)}%` }}
                     ></div>
                   </div>
-                  <div className="mt-3 flex justify-end">
+                  <div className="mt-3 flex justify-between items-center">
+                    {selectedIds.includes(player.id) ? (
+                      <span className="text-[8px] font-black bg-[#ff4655] px-1 italic">SELECTED</span>
+                    ) : <span></span>}
                     {player.images?.small && (
                       <img src={player.images.small} className="w-7 h-7 opacity-90" alt="" />
                     )}
